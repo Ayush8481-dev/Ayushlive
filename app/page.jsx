@@ -116,7 +116,8 @@ ${base}/live_480p/chunks.m3u8
 ${base}/live_720p/chunks.m3u8`;
 };
 
-const CATEGORY_ORDER = ['All', 'Premium', 'Favorites', 'Sports', 'Entertainment', 'News', 'Movies', 'Music', 'Kids', 'Bhojpuri'];
+// Added Zee5 strictly mapped into category order natively
+const CATEGORY_ORDER = ['All', 'Premium', 'Zee5', 'Favorites', 'Sports', 'Entertainment', 'News', 'Movies', 'Music', 'Kids', 'Bhojpuri'];
 
 // Format time utility
 const formatDuration = (seconds) => {
@@ -146,7 +147,7 @@ export default function PerfectPlayerUI() {
   const [categories, setCategories] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [favorites, setFavorites] = useState([]);
-  const [lastPlayed, setLastPlayed] = useState(null);
+  const [lastPlayedHistory, setLastPlayedHistory] = useState([]);
 
   // UI States
   const [activeChannel, setActiveChannel] = useState(null);
@@ -190,7 +191,6 @@ export default function PerfectPlayerUI() {
   const activeChannelRef = useRef(null);
   const showPlayerSettingsRef = useRef(false);
   
-  const isManualAudioSwitch = useRef(false);
   const isUserManualAudio = useRef(false); 
   const isUserManualVideo = useRef(false); 
   
@@ -219,7 +219,13 @@ export default function PerfectPlayerUI() {
       }
 
       setFavorites(JSON.parse(localStorage.getItem('fav_channels_8481') || '[]'));
-      setLastPlayed(JSON.parse(localStorage.getItem('last_played_8481') || 'null'));
+      
+      // Parse History (Handles conversion from old single object format to new 4-item array)
+      let savedHistory = JSON.parse(localStorage.getItem('last_played_8481') || '[]');
+      if (!Array.isArray(savedHistory)) {
+        savedHistory = savedHistory && savedHistory.id ? [{ id: savedHistory.id, name: savedHistory.name }] : [];
+      }
+      setLastPlayedHistory(savedHistory);
 
       const handlePopState = () => { 
         if (activeChannelRef.current) setActiveChannel(null); 
@@ -356,12 +362,15 @@ export default function PerfectPlayerUI() {
       try {
         setIsLoading(true);
         const ts = new Date().getTime();
-        const [tokenRes, standardRes, premRes, dictKeysRes, dictUrlsRes] = await Promise.allSettled([
+        
+        // ADDED ZEE5 API FETCH ALONG WITH PREVIOUS APIS
+        const [tokenRes, standardRes, premRes, dictKeysRes, dictUrlsRes, zeeRes] = await Promise.allSettled([
           fetch('https://allinonereborn2.online/jstrweb2/cookies.json'),
           fetch(`https://jtvxweb.pages.dev/jstr4web.json?t=${ts}`),
           fetch(`https://sayan-json-3.pages.dev/Data/sports.json?t=${ts}`),
           fetch(`https://raw.githubusercontent.com/live4wap/links/refs/heads/main/jiomb?t=${ts}`),
-          fetch(`https://tv.wapgotube.workers.dev/proxy/https://allinonereborn2.online/jtv-fetch/jstarcookie/cookie.json?t=${ts}`)
+          fetch(`https://tv.wapgotube.workers.dev/proxy/https://allinonereborn2.online/jtv-fetch/jstarcookie/cookie.json?t=${ts}`),
+          fetch(`https://tv.wapgotube.workers.dev/proxy/https://allinonereborn2.online/zee5/channels199.json?t=${ts}`)
         ]);
 
         if (tokenRes.status === 'fulfilled') {
@@ -423,13 +432,34 @@ export default function PerfectPlayerUI() {
           } catch (e) {}
         }
 
+        // NEW: ZEE5 DATA PROCESSING
+        let zeeData = [];
+        if (zeeRes.status === 'fulfilled') {
+          try {
+            const zeeJson = await zeeRes.value.json();
+            if (zeeJson && zeeJson.channels) {
+              zeeData = zeeJson.channels.map(c => ({
+                id: c.name.replace(/\s+/g, '_').toLowerCase(),
+                name: c.name,
+                url: c.mpd,
+                keyId: c.clearkey?.keyId || null,
+                key: c.clearkey?.key || null,
+                cookie: "",
+                category: 'Zee5',
+                logo: c.logo
+              }));
+            }
+          } catch (e) {}
+        }
+
         const customChannels = [
           { name: "Dangal", url: "https://live-dangal.akamaized.net/liveabr/pub-iodang10p4al/live_720p/chunks.m3u8", keyId: "null", key: "null", cookie: "", category: "Entertainment", logo: "https://dangaplay-json.s3.ap-south-1.amazonaws.com/Dangal_1x1.jpg?bf=0&f=jpg&p=true&q=85&w=300" },
           { name: "Dangal 2", url: "https://live-dangal2.akamaized.net/liveabr/pub-iodanga2a26kj2/live_720p/chunks.m3u8", keyId: "null", key: "null", cookie: "", category: "Entertainment", logo: "https://dangaplay-json.s3.ap-south-1.amazonaws.com/Dangal2_1x1.jpg?bf=0&f=jpg&p=true&q=85&w=50" },
           { name: "Bhojpuri Cinema", url: "https://live-bhojpuri.akamaized.net/liveabr/pub-iobhojpuqbu6yj/live_720p/chunks.m3u8", keyId: "null", key: "null", cookie: "", category: "Bhojpuri", logo: "https://dangaplay-json.s3.ap-south-1.amazonaws.com/BhojpuriCinema_1x1.jpg?bf=0&f=jpg&p=true&q=85&w=250" }
         ];
 
-        const rawCombined = [...premiumData, ...customChannels, ...standardData];
+        // ADDED ZEE5 TO RAW COMBINED
+        const rawCombined = [...premiumData, ...zeeData, ...customChannels, ...standardData];
 
         const combined = rawCombined.map(c => {
           const cid = String(c.id || c.channel_id || "");
@@ -500,37 +530,28 @@ export default function PerfectPlayerUI() {
         const sortedAudio = Array.from(uniqueAudio.values()).sort((a,b) => b.audioBandwidth - a.audioBandwidth);
         setAudioTracks(sortedAudio);
         
-        const active = tracks.find(t => t.active);
-        if (active && !isUserManualAudio.current) {
-          setSelectedAudio(active.audioBandwidth);
-        }
-      });
-
-      player.addEventListener('adaptation', () => {
-        if (isManualAudioSwitch.current || !playerRef.current || isUserManualAudio.current) return;
-        const tracks = playerRef.current.getVariantTracks();
-        const active = tracks.find(t => t.active);
-        if (!active || !active.height) return;
-
-        setActiveResolution(`${active.height}p`);
-
-        const peers = tracks.filter(t => t.height === active.height);
-        if (peers.length <= 1) return;
-
-        peers.sort((a,b) => (a.audioBandwidth || 0) - (b.audioBandwidth || 0));
-        let targetTrack = peers[peers.length - 1]; 
-
-        if (targetTrack && targetTrack.id !== active.id) {
-            isManualAudioSwitch.current = true;
-            playerRef.current.selectVariantTrack(targetTrack, false);
-            setSelectedAudio(targetTrack.audioBandwidth);
+        // Auto-Lock Highest Audio Logic
+        if (sortedAudio.length > 0 && !isUserManualAudio.current) {
+          const highestAudioTrack = sortedAudio[0];
+          setSelectedAudio(highestAudioTrack.audioBandwidth);
+          
+          if (sortedAudio.length > 1) {
+            isUserManualAudio.current = true;
+            player.configure({ abr: { enabled: false } }); // Lock ABR
             
-            setTimeout(() => {
-                if (playerRef.current && !isUserManualAudio.current && !isUserManualVideo.current) {
-                  playerRef.current.configure({ abr: { enabled: true } });
-                }
-                isManualAudioSwitch.current = false;
-            }, 6000);
+            const activeTrack = tracks.find(t => t.active);
+            const targetHeight = activeTrack ? activeTrack.height : (sortedVideo.length > 0 ? sortedVideo[0].height : null);
+            
+            // Try to match highest audio with active video height first
+            let targetVariant = tracks.find(t => t.audioBandwidth === highestAudioTrack.audioBandwidth && t.height === targetHeight);
+            if (!targetVariant) {
+               targetVariant = tracks.find(t => t.audioBandwidth === highestAudioTrack.audioBandwidth);
+            }
+            
+            if (targetVariant) {
+              player.selectVariantTrack(targetVariant, true, true);
+            }
+          }
         }
       });
 
@@ -587,7 +608,7 @@ export default function PerfectPlayerUI() {
           drmConfig.clearKeys[activeChannel.keyId] = activeChannel.key;
         }
         
-        // Prioritize highest audio bandwidth initially by setting a huge default estimate
+        // Prioritize highest bandwidth globally upfront
         playerRef.current.configure({
           drm: drmConfig,
           manifest: { dash: { ignoreDrmInfo: false } },
@@ -836,10 +857,17 @@ export default function PerfectPlayerUI() {
   const handleChannelSelect = useCallback((channel) => {
     if (!activeChannelRef.current && typeof window !== 'undefined') window.history.pushState({ playerOpen: true }, '');
     else if (typeof window !== 'undefined') window.history.replaceState({ playerOpen: true }, '');
+    
     setActiveChannel(channel);
     setSearchQuery('');
-    setLastPlayed(channel);
-    localStorage.setItem('last_played_8481', JSON.stringify(channel));
+    
+    // Manage History: Keep up to 4 items, store only {id, name}
+    setLastPlayedHistory(prev => {
+      const filtered = prev.filter(c => c.name !== channel.name && c.id !== channel.id);
+      const updated = [{ id: channel.id, name: channel.name }, ...filtered].slice(0, 4);
+      localStorage.setItem('last_played_8481', JSON.stringify(updated));
+      return updated;
+    });
   }, []);
 
   const handleUiBack = () => {
@@ -878,6 +906,13 @@ export default function PerfectPlayerUI() {
       return cCat === activeCat && c.name !== activeChannel.name;
     });
   }, [channels, activeChannel]);
+
+  // Construct history objects dynamically from fresh fetched data
+  const historyChannelsToRender = useMemo(() => {
+    return lastPlayedHistory
+      .map(hist => channels.find(c => (c.id && c.id === hist.id) || (c.name && c.name === hist.name)))
+      .filter(Boolean);
+  }, [lastPlayedHistory, channels]);
 
   if (!isMounted) return <div className="h-screen w-screen bg-[#020813]" />;
 
@@ -961,6 +996,7 @@ export default function PerfectPlayerUI() {
                   activeCategory === cat ? 'bg-[#0084ff] text-white shadow-md' 
                   : cat === 'Favorites' ? 'bg-pink-500/10 text-pink-400 hover:bg-pink-500/20 border border-pink-500/20'
                   : cat === 'Premium' ? 'bg-amber-500/10 text-amber-400 hover:bg-amber-500/20 border border-amber-500/20' 
+                  : cat === 'Zee5' ? 'bg-purple-500/10 text-purple-400 hover:bg-purple-500/20 border border-purple-500/20'
                   : 'bg-blue-900/20 text-blue-200/70 hover:bg-blue-900/40'
                 }`}
               >
@@ -979,13 +1015,15 @@ export default function PerfectPlayerUI() {
             </div>
           ) : (
             <>
-              {activeCategory === 'All' && !searchQuery && lastPlayed && (
+              {activeCategory === 'All' && !searchQuery && historyChannelsToRender.length > 0 && (
                 <div className="mb-6 bg-[#0a182b]/50 p-3 rounded-2xl border border-blue-400/5">
                   <h2 className="text-blue-200/80 text-[11px] font-bold mb-3 uppercase tracking-widest flex items-center gap-2">
                     <PlayCircle size={14} className="text-[#0084ff]" /> Continue Watching
                   </h2>
-                  <div className="w-[120px]">
-                    <ChannelCard channel={lastPlayed} isActive={false} onClick={handleChannelSelect} />
+                  <div className="grid grid-cols-4 gap-2">
+                    {historyChannelsToRender.map((c, idx) => (
+                      <ChannelCard key={`hist-${idx}`} channel={c} isActive={false} onClick={handleChannelSelect} />
+                    ))}
                   </div>
                 </div>
               )}
@@ -1074,12 +1112,12 @@ export default function PerfectPlayerUI() {
               </div>
 
               {/* PERFECTLY CENTERED BUFFERING SPINNER - Z-40 */}
-              <div className={`absolute top-0 left-0 w-full h-[calc(100%-25px)] flex justify-center items-center z-40 pointer-events-none transition-opacity duration-300 ${isBuffering ? 'opacity-100' : 'opacity-0'}`}>
+              <div className={`absolute top-0 left-0 w-full h-[calc(100%-20px)] flex justify-center items-center z-40 pointer-events-none transition-opacity duration-300 ${isBuffering ? 'opacity-100' : 'opacity-0'}`}>
                 <div className="w-12 h-12 md:w-16 md:h-16 border-[3px] border-[#0084ff]/30 border-t-[#0084ff] rounded-full animate-spin"></div>
               </div>
 
               {/* PERFECTLY CENTERED PLAY/PAUSE/SKIP - Adjusted to sit gracefully above timeline */}
-              <div className={`absolute top-0 left-0 w-full h-[calc(100%-25px)] flex items-center justify-center gap-14 sm:gap-20 md:gap-24 z-40 pointer-events-none transition-opacity duration-300 ${showControls ? 'opacity-100' : 'opacity-0'}`}>
+              <div className={`absolute top-0 left-0 w-full h-[calc(100%-20px)] flex items-center justify-center gap-14 sm:gap-20 md:gap-24 z-40 pointer-events-none transition-opacity duration-300 ${showControls ? 'opacity-100' : 'opacity-0'}`}>
                 <button onClick={(e) => handleButtonSkip(true, e)} className={`outline-none transition-transform hover:scale-105 active:scale-90 flex items-center rounded-full focus-visible:ring-4 focus-visible:ring-white/50 drop-shadow-[0_2px_15px_rgba(0,0,0,0.8)] ${pointerEventsClass}`}>
                   <svg className="w-10 h-10 sm:w-12 sm:h-12 text-white hover:text-[#0084ff] transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M11 19l-7-7 7-7m8 14l-7-7 7-7" /></svg>
                 </button>
@@ -1144,11 +1182,11 @@ export default function PerfectPlayerUI() {
               <div className={`absolute inset-0 flex flex-col justify-between p-4 md:p-6 z-30 transition-opacity duration-300 pointer-events-none ${showControls ? 'opacity-100 bg-black/50' : 'opacity-0'}`}
                    style={{ paddingTop: 'env(safe-area-inset-top, 16px)', paddingBottom: 'env(safe-area-inset-bottom, 16px)', paddingLeft: 'env(safe-area-inset-left, 16px)', paddingRight: 'env(safe-area-inset-right, 16px)' }}>
                 
-                {/* Top Bar */}
-                <div className={`flex items-center justify-between ${pointerEventsClass} w-full`}>
+                {/* Top Bar - Adjusted to pull away from the very edges */}
+                <div className={`flex items-center justify-between ${pointerEventsClass} w-full pt-4 pl-4`}>
                   <div className="flex items-center gap-3">
                     <button onClick={handleUiBack} className="p-1 hover:text-[#0084ff] transition active:scale-95 drop-shadow-md rounded-full outline-none focus-visible:ring-2 focus-visible:ring-white">
-                      <ArrowLeft size={24} className="text-white" />
+                      <ArrowLeft size={34} className="text-white" />
                     </button>
                     <div className="text-white text-lg md:text-xl font-bold truncate max-w-[200px] md:max-w-md">{activeChannel?.name}</div>
                     <button onClick={toggleFavorite} className="text-pink-500 hover:text-pink-400 p-1 transition-transform active:scale-75 rounded-full outline-none focus-visible:ring-2 focus-visible:ring-pink-500">
@@ -1250,15 +1288,7 @@ export default function PerfectPlayerUI() {
                 )}
               </div>
               
-              <div className="flex flex-row landscape:hidden md:hidden overflow-x-auto gap-3 pb-2 scroll-smooth overscroll-none no-scrollbar">
-                {similarChannels.map((c, idx) => (
-                  <div key={idx} className="flex-shrink-0 w-[90px]">
-                    <ChannelCard channel={c} isActive={false} onClick={handleChannelSelect} />
-                  </div>
-                ))}
-              </div>
-
-              <div className="hidden landscape:grid md:grid grid-cols-2 gap-3 pb-2 overflow-y-auto scroll-smooth overscroll-none no-scrollbar content-start">
+              <div className="grid grid-cols-4 sm:grid-cols-5 md:grid-cols-2 gap-3 pb-2 overflow-y-auto scroll-smooth overscroll-none no-scrollbar content-start flex-1">
                 {similarChannels.map((c, idx) => (
                   <ChannelCard key={idx} channel={c} isActive={false} onClick={handleChannelSelect} />
                 ))}
