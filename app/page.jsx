@@ -5,6 +5,16 @@ import 'shaka-player/dist/controls.css';
 import { Search, Tv, PlayCircle, X, Loader2, ArrowLeft, WifiOff, AlertTriangle, RefreshCcw, Heart } from 'lucide-react';
 
 // ==========================================
+// SONY LIV PROXY ROTATION ARRAY
+// ==========================================
+const SONY_PROXIES = [
+  'https://ayushproxyserver1.vercel.app/api/proxy?url=',
+  'https://ayushproxyserver2.vercel.app/api/proxy?url=',
+  'https://ayushproxyserver3.vercel.app/api/proxy?url=',
+  'https://ayushproxyserver4.vercel.app/api/proxy?url='
+];
+
+// ==========================================
 // INDEXED-DB LOGO CACHE MANAGER
 // ==========================================
 const DB_NAME = 'LogoCacheDB';
@@ -101,8 +111,28 @@ const ChannelCard = React.memo(({ channel, isActive, onClick }) => {
 ChannelCard.displayName = "ChannelCard";
 
 // ==========================================
-// DYNAMIC M3U8 MASTER GENERATOR
+// DYNAMIC URL & M3U8 MASTER GENERATORS
 // ==========================================
+const getAryDigitalUrl = () => {
+  try {
+    const date = new Date();
+    const istString = date.toLocaleString("en-US", { timeZone: "Asia/Kolkata" });
+    const istDate = new Date(istString);
+    const hour = istDate.getHours();
+
+    if (hour >= 0 && hour < 6) return 'https://arydigitalserver1.naturalb492.workers.dev/play.m3u8';
+    if (hour >= 6 && hour < 12) return 'https://arydigitalserver2.ayush848yadav.workers.dev/play.m3u8';
+    if (hour >= 12 && hour < 18) return 'https://arydigitalserver3.yaouttubeindia.workers.dev/play.m3u8';
+    return 'https://arydigitalserver4.azchandan753.workers.dev/play.m3u8';
+  } catch (e) {
+    const h = new Date().getHours();
+    if (h >= 0 && h < 6) return 'https://arydigitalserver1.naturalb492.workers.dev/play.m3u8';
+    if (h >= 6 && h < 12) return 'https://arydigitalserver2.ayush848yadav.workers.dev/play.m3u8';
+    if (h >= 12 && h < 18) return 'https://arydigitalserver3.yaouttubeindia.workers.dev/play.m3u8';
+    return 'https://arydigitalserver4.azchandan753.workers.dev/play.m3u8';
+  }
+};
+
 const buildMasterPlaylist = (url) => {
   const base = url.substring(0, url.indexOf('/live_'));
   return `#EXTM3U
@@ -116,10 +146,18 @@ ${base}/live_480p/chunks.m3u8
 ${base}/live_720p/chunks.m3u8`;
 };
 
-// Added Zee5 strictly mapped into category order natively
-const CATEGORY_ORDER = ['All', 'Premium', 'Zee5', 'Favorites', 'Sports', 'Entertainment', 'News', 'Movies', 'Music', 'Kids', 'Bhojpuri'];
+const buildHumTvMasterPlaylist = () => {
+  return `#EXTM3U
+#EXT-X-STREAM-INF:BANDWIDTH=800000,RESOLUTION=640x360,CODECS="avc1.4d401e,mp4a.40.2"
+https://g4wlkwx8l23a-hls-live.5centscdn.com/HUM/271ddf829afeece44d8732757fba1a66.sdp/HUM/TV3/chunks_dvr.m3u8
+#EXT-X-STREAM-INF:BANDWIDTH=1500000,RESOLUTION=854x480,CODECS="avc1.4d401f,mp4a.40.2"
+https://g4wlkwx8l23a-hls-live.5centscdn.com/HUM/271ddf829afeece44d8732757fba1a66.sdp/HUM/TV2/chunks_dvr.m3u8
+#EXT-X-STREAM-INF:BANDWIDTH=3000000,RESOLUTION=1280x720,CODECS="avc1.4d401f,mp4a.40.2"
+https://g4wlkwx8l23a-hls-live.5centscdn.com/HUM/271ddf829afeece44d8732757fba1a66.sdp/HUM/TV1/chunks_dvr.m3u8`;
+};
 
-// Format time utility
+const CATEGORY_ORDER = ['All', 'Premium', 'SonyLiv', 'Zee5', 'Favorites', 'Sports', 'Entertainment', 'News', 'Movies', 'Music', 'Kids', 'Bhojpuri'];
+
 const formatDuration = (seconds) => {
   if (isNaN(seconds) || seconds === Infinity) return '0:00';
   const h = Math.floor(seconds / 3600);
@@ -137,25 +175,21 @@ const formatLiveLatency = (seconds) => {
 };
 
 export default function PerfectPlayerUI() {
-  // Core States
   const [isMounted, setIsMounted] = useState(false);
   const [isOffline, setIsOffline] = useState(false);
   const [playerError, setPlayerError] = useState(null);
 
-  // Data States
   const [channels, setChannels] = useState([]);
   const [categories, setCategories] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [favorites, setFavorites] = useState([]);
   const [lastPlayedHistory, setLastPlayedHistory] = useState([]);
 
-  // UI States
   const [activeChannel, setActiveChannel] = useState(null);
   const [activeCategory, setActiveCategory] = useState('All');
   const [searchQuery, setSearchQuery] = useState('');
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   
-  // Custom Player States
   const [isPlaying, setIsPlaying] = useState(false);
   const [isBuffering, setIsBuffering] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -163,7 +197,6 @@ export default function PerfectPlayerUI() {
   const [duration, setDuration] = useState(0);
   const [showControls, setShowControls] = useState(true);
   
-  // Media Quality States
   const [quality, setQuality] = useState('Auto');
   const [activeResolution, setActiveResolution] = useState('');
   const [availableQualities, setAvailableQualities] = useState([{ index: -1, name: 'Auto' }]);
@@ -172,25 +205,24 @@ export default function PerfectPlayerUI() {
   const [audioTracks, setAudioTracks] = useState([]);
   const [selectedAudio, setSelectedAudio] = useState(null);
   
-  // LIVE Stream States
   const [isLiveStream, setIsLiveStream] = useState(false);
   const [liveLatencyText, setLiveLatencyText] = useState('LIVE');
   const [seekRange, setSeekRange] = useState({ start: 0, end: 100 });
   
-  // Skip Animations & Pinch Zoom
   const [skipAccumulator, setSkipAccumulator] = useState(0);
   const [skipSide, setSkipSide] = useState(null);
   const [isZoomed, setIsZoomed] = useState(false);
   const [zoomMessage, setZoomMessage] = useState('');
 
-  // Refs
   const videoRef = useRef(null);
   const containerRef = useRef(null);
   const playerRef = useRef(null);
   const tokenRef = useRef(""); 
   const activeChannelRef = useRef(null);
   const showPlayerSettingsRef = useRef(false);
+  const sonyProxyIndexRef = useRef(0);
   
+  const initialVideoLocked = useRef(false);
   const isUserManualAudio = useRef(false); 
   const isUserManualVideo = useRef(false); 
   
@@ -200,7 +232,6 @@ export default function PerfectPlayerUI() {
   const pinchRef = useRef({ initialDist: 0, isPinching: false });
   const zoomToastTimer = useRef(null);
 
-  // 1. Mount & Setup
   useEffect(() => {
     setIsMounted(true);
     if (typeof window !== 'undefined') {
@@ -220,7 +251,6 @@ export default function PerfectPlayerUI() {
 
       setFavorites(JSON.parse(localStorage.getItem('fav_channels_8481') || '[]'));
       
-      // Parse History (Handles conversion from old single object format to new 4-item array)
       let savedHistory = JSON.parse(localStorage.getItem('last_played_8481') || '[]');
       if (!Array.isArray(savedHistory)) {
         savedHistory = savedHistory && savedHistory.id ? [{ id: savedHistory.id, name: savedHistory.name }] : [];
@@ -235,18 +265,14 @@ export default function PerfectPlayerUI() {
     }
   }, []);
 
-  // Update refs for global Event Listeners
   useEffect(() => { activeChannelRef.current = activeChannel; }, [activeChannel]);
   useEffect(() => { showPlayerSettingsRef.current = showPlayerSettings; }, [showPlayerSettings]);
 
-  // TV Remote & Keyboard Event Listener (Fire TV Compatible)
   useEffect(() => {
     const handleKeyDown = (e) => {
-      // Ignore if typing in the search bar
       const isInput = e.target.tagName === 'INPUT';
       if (isInput && e.key !== 'Escape') return;
 
-      // Global TV Remote Media Keys
       if (['MediaPlayPause', 'MediaPlay', 'MediaPause'].includes(e.code) || e.key === 'MediaPlayPause') {
         if (videoRef.current) {
           if (videoRef.current.paused) videoRef.current.play().catch(()=>{});
@@ -256,33 +282,24 @@ export default function PerfectPlayerUI() {
         return;
       }
 
-      // Back / Escape button handling (Tizen back is 10009)
       if (e.key === 'Escape' || e.key === 'Backspace' || e.keyCode === 10009) {
         if (showPlayerSettingsRef.current) {
           setShowPlayerSettings(false);
           e.preventDefault();
         } else if (activeChannelRef.current && !isInput) {
-          setActiveChannel(null); // Force local state reset
+          setActiveChannel(null);
           if (window.history.state && window.history.state.playerOpen) window.history.back();
           e.preventDefault();
         }
         return;
       }
 
-      // Video Navigation (Active Player)
       if (activeChannelRef.current && !showPlayerSettingsRef.current && !isInput) {
         const isButton = e.target.tagName === 'BUTTON';
-
         if (e.key === 'ArrowLeft' || e.key === 'MediaRewind') {
-          if (!isButton) { // only shortcut if not highlighting a button via D-pad
-            e.preventDefault();
-            handleButtonSkip(true, null);
-          }
+          if (!isButton) { e.preventDefault(); handleButtonSkip(true, null); }
         } else if (e.key === 'ArrowRight' || e.key === 'MediaFastForward') {
-          if (!isButton) {
-            e.preventDefault();
-            handleButtonSkip(false, null);
-          }
+          if (!isButton) { e.preventDefault(); handleButtonSkip(false, null); }
         } else if (e.key === ' ' || e.key === 'Enter') {
           if (!isButton) {
             e.preventDefault();
@@ -292,18 +309,15 @@ export default function PerfectPlayerUI() {
             }
           }
         } else if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
-          // Wake controls on up/down
           setShowControls(true);
           resetControlsTimer();
         }
       }
     };
-
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
 
-  // Smart Fullscreen & Orientation Listeners
   useEffect(() => {
     const handleFullscreenChange = () => setIsFullscreen(!!document.fullscreenElement);
     document.addEventListener('fullscreenchange', handleFullscreenChange);
@@ -313,46 +327,27 @@ export default function PerfectPlayerUI() {
   useEffect(() => {
     const handleOrientationChange = () => {
       if (!activeChannelRef.current || !containerRef.current) return;
-      
       const checkOrientation = () => {
         const isLandscape = window.matchMedia("(orientation: landscape)").matches;
         if (isLandscape && !document.fullscreenElement) {
            if (containerRef.current.requestFullscreen) {
              containerRef.current.requestFullscreen().catch(()=>{});
-           } else if (videoRef.current?.webkitEnterFullscreen) { // iOS fallback
+           } else if (videoRef.current?.webkitEnterFullscreen) {
              videoRef.current.webkitEnterFullscreen();
            }
         } else if (!isLandscape && document.fullscreenElement) {
            if (document.exitFullscreen) {
              document.exitFullscreen().catch(()=>{});
-           } else if (videoRef.current?.webkitExitFullscreen) { // iOS fallback
+           } else if (videoRef.current?.webkitExitFullscreen) {
              videoRef.current.webkitExitFullscreen();
            }
         }
       };
-
-      // Check immediately and fallback slightly after layout computes
       setTimeout(checkOrientation, 300);
       setTimeout(checkOrientation, 800);
     };
-
     window.addEventListener('orientationchange', handleOrientationChange);
     return () => window.removeEventListener('orientationchange', handleOrientationChange);
-  }, []);
-
-  // Auto PiP on background
-  useEffect(() => {
-    const handleVisibilityChange = async () => {
-      if (document.visibilityState === 'hidden' && activeChannelRef.current && videoRef.current) {
-        try {
-          if (!videoRef.current.paused && document.pictureInPictureElement !== videoRef.current) {
-            await videoRef.current.requestPictureInPicture();
-          }
-        } catch (error) {}
-      }
-    };
-    document.addEventListener('visibilitychange', handleVisibilityChange);
-    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
   }, []);
 
   // 2. Fetch Core APIs
@@ -363,14 +358,14 @@ export default function PerfectPlayerUI() {
         setIsLoading(true);
         const ts = new Date().getTime();
         
-        // ADDED ZEE5 API FETCH ALONG WITH PREVIOUS APIS
-        const [tokenRes, standardRes, premRes, dictKeysRes, dictUrlsRes, zeeRes] = await Promise.allSettled([
+        const [tokenRes, standardRes, premRes, dictKeysRes, dictUrlsRes, zeeRes, sonyRes] = await Promise.allSettled([
           fetch('https://allinonereborn2.online/jstrweb2/cookies.json'),
           fetch(`https://jtvxweb.pages.dev/jstr4web.json?t=${ts}`),
           fetch(`https://sayan-json-3.pages.dev/Data/sports.json?t=${ts}`),
           fetch(`https://raw.githubusercontent.com/live4wap/links/refs/heads/main/jiomb?t=${ts}`),
           fetch(`https://tv.wapgotube.workers.dev/proxy/https://allinonereborn2.online/jtv-fetch/jstarcookie/cookie.json?t=${ts}`),
-          fetch(`https://tv.wapgotube.workers.dev/proxy/https://allinonereborn2.online/zee5/channels199.json?t=${ts}`)
+          fetch(`https://tv.wapgotube.workers.dev/proxy/https://allinonereborn2.online/zee5/channels199.json?t=${ts}`),
+          fetch(`https://tv.wapgotube.workers.dev/proxy/https://allinonereborn2.online/sony/sliv3.json?t=${ts}`)
         ]);
 
         if (tokenRes.status === 'fulfilled') {
@@ -432,7 +427,6 @@ export default function PerfectPlayerUI() {
           } catch (e) {}
         }
 
-        // NEW: ZEE5 DATA PROCESSING
         let zeeData = [];
         if (zeeRes.status === 'fulfilled') {
           try {
@@ -452,29 +446,69 @@ export default function PerfectPlayerUI() {
           } catch (e) {}
         }
 
+        let sonyData = [];
+        if (sonyRes.status === 'fulfilled') {
+          try {
+            const sonyJson = await sonyRes.value.json();
+            sonyData = Object.values(sonyJson).map(c => ({
+              id: c.id,
+              name: c.title,
+              url: `https://royal-firefly-881d.indianboy8948.workers.dev/?url=${c.m3u8}`,
+              keyId: null,
+              key: null,
+              cookie: "",
+              category: 'SonyLiv',
+              logo: c.logo,
+              isNativeSonyLiv: true
+            }));
+          } catch (e) {}
+        }
+
         const customChannels = [
           { name: "Dangal", url: "https://live-dangal.akamaized.net/liveabr/pub-iodang10p4al/live_720p/chunks.m3u8", keyId: "null", key: "null", cookie: "", category: "Entertainment", logo: "https://dangaplay-json.s3.ap-south-1.amazonaws.com/Dangal_1x1.jpg?bf=0&f=jpg&p=true&q=85&w=300" },
           { name: "Dangal 2", url: "https://live-dangal2.akamaized.net/liveabr/pub-iodanga2a26kj2/live_720p/chunks.m3u8", keyId: "null", key: "null", cookie: "", category: "Entertainment", logo: "https://dangaplay-json.s3.ap-south-1.amazonaws.com/Dangal2_1x1.jpg?bf=0&f=jpg&p=true&q=85&w=50" },
-          { name: "Bhojpuri Cinema", url: "https://live-bhojpuri.akamaized.net/liveabr/pub-iobhojpuqbu6yj/live_720p/chunks.m3u8", keyId: "null", key: "null", cookie: "", category: "Bhojpuri", logo: "https://dangaplay-json.s3.ap-south-1.amazonaws.com/BhojpuriCinema_1x1.jpg?bf=0&f=jpg&p=true&q=85&w=250" }
+          { name: "Bhojpuri Cinema", url: "https://live-bhojpuri.akamaized.net/liveabr/pub-iobhojpuqbu6yj/live_720p/chunks.m3u8", keyId: "null", key: "null", cookie: "", category: "Bhojpuri", logo: "https://dangaplay-json.s3.ap-south-1.amazonaws.com/BhojpuriCinema_1x1.jpg?bf=0&f=jpg&p=true&q=85&w=250" },
+          { name: "ARY Digital", url: "ary_digital_dynamic_generation", keyId: "null", key: "null", cookie: "", category: "Entertainment", logo: "https://upload.wikimedia.org/wikipedia/commons/e/e8/Ary_Digital_Logo.png" },
+          { name: "HUM TV", url: "hum_tv_master_custom_generation", keyId: "null", key: "null", cookie: "", category: "Entertainment", logo: "https://upload.wikimedia.org/wikipedia/en/thumb/e/e4/Hum_TV_2013.png/120px-Hum_TV_2013.png" }
         ];
 
-        // ADDED ZEE5 TO RAW COMBINED
-        const rawCombined = [...premiumData, ...zeeData, ...customChannels, ...standardData];
+        const rawCombined = [...premiumData, ...zeeData, ...standardData, ...customChannels, ...sonyData];
 
-        const combined = rawCombined.map(c => {
+        const combined = rawCombined.reduce((acc, c) => {
           const cid = String(c.id || c.channel_id || "");
           const cname = String(c.name || "").toLowerCase();
+          
           if (c.stream_url && !c.url) c.url = c.stream_url;
           if (c.key_id && !c.keyId) c.keyId = c.key_id;
+          
           const overrideUrl = urlsDict.get(cid) || urlsDict.get(cname);
           if (overrideUrl) c.url = overrideUrl;
+          
           const needsKey = !c.keyId || c.keyId === "null" || c.keyId === "" || !c.key || c.key === "null" || c.key === "";
           if (needsKey) {
             const fixedKeys = keysDict.get(cid) || keysDict.get(cname);
             if (fixedKeys) { c.keyId = fixedKeys.keyId; c.key = fixedKeys.key; }
           }
-          return c;
-        });
+
+          if (!c.isNativeSonyLiv && (cname === 'sony liv' || cname.includes('sony liv'))) {
+             return acc;
+          }
+
+          acc.push({ ...c });
+
+          if (c.category !== 'Premium' && !c.isNativeSonyLiv) {
+             if (cname.includes('sony') || cname.includes('set hd')) {
+                 acc.push({ 
+                     ...c, 
+                     category: 'SonyLiv', 
+                     isCopiedToSonyLiv: true,
+                     id: c.id ? c.id + '_copy' : c.name + '_copy'
+                 });
+             }
+          }
+
+          return acc;
+        }, []);
 
         setChannels(combined);
 
@@ -491,7 +525,7 @@ export default function PerfectPlayerUI() {
     fetchInitialData();
   }, [isMounted, isOffline]);
 
-  // 3. SHAKA BARE-METAL CORE INITIALIZATION (NO DEFAULT UI)
+  // 3. SHAKA BARE-METAL CORE INITIALIZATION
   useEffect(() => {
     if (!isMounted || isOffline || !videoRef.current || playerRef.current) return;
 
@@ -504,6 +538,9 @@ export default function PerfectPlayerUI() {
       
       player.addEventListener('error', (e) => {
         console.error('Shaka Player Error', e.detail);
+        if (activeChannelRef.current?.category === 'SonyLiv' && activeChannelRef.current?.isNativeSonyLiv) {
+           sonyProxyIndexRef.current = (sonyProxyIndexRef.current + 1) % SONY_PROXIES.length; 
+        }
         setPlayerError("Stream unavailable or DRM error. Please try another channel.");
       });
 
@@ -529,29 +566,52 @@ export default function PerfectPlayerUI() {
         tracks.forEach(t => { if (t.audioBandwidth && !uniqueAudio.has(t.audioBandwidth)) uniqueAudio.set(t.audioBandwidth, t); });
         const sortedAudio = Array.from(uniqueAudio.values()).sort((a,b) => b.audioBandwidth - a.audioBandwidth);
         setAudioTracks(sortedAudio);
+
+        let targetVideoHeight = null;
+        let trackLocked = false;
         
-        // Auto-Lock Highest Audio Logic
+        // 1. Initial Strict Video Lock (Between 200p and 600p) - "change only when user click"
+        if (!initialVideoLocked.current && sortedVideo.length > 0 && !isUserManualVideo.current) {
+           const midTracks = sortedVideo.filter(t => t.height >= 200 && t.height <= 600);
+           const defaultVideoTrack = midTracks.length > 0 ? midTracks[0] : sortedVideo[sortedVideo.length - 1];
+           targetVideoHeight = defaultVideoTrack.height;
+           setQuality(`${targetVideoHeight}p`);
+           isUserManualVideo.current = true; // Act as if it was a manual click lock
+           initialVideoLocked.current = true;
+           trackLocked = true;
+        }
+
+        // 2. Highest Audio Selection Logic (Preserved Strictly)
+        let targetAudioBandwidth = selectedAudio;
         if (sortedAudio.length > 0 && !isUserManualAudio.current) {
-          const highestAudioTrack = sortedAudio[0];
-          setSelectedAudio(highestAudioTrack.audioBandwidth);
-          
+          targetAudioBandwidth = sortedAudio[0].audioBandwidth;
+          setSelectedAudio(targetAudioBandwidth);
           if (sortedAudio.length > 1) {
-            isUserManualAudio.current = true;
-            player.configure({ abr: { enabled: false } }); // Lock ABR
-            
-            const activeTrack = tracks.find(t => t.active);
-            const targetHeight = activeTrack ? activeTrack.height : (sortedVideo.length > 0 ? sortedVideo[0].height : null);
-            
-            // Try to match highest audio with active video height first
-            let targetVariant = tracks.find(t => t.audioBandwidth === highestAudioTrack.audioBandwidth && t.height === targetHeight);
-            if (!targetVariant) {
-               targetVariant = tracks.find(t => t.audioBandwidth === highestAudioTrack.audioBandwidth);
-            }
-            
-            if (targetVariant) {
-              player.selectVariantTrack(targetVariant, true, true);
-            }
+              isUserManualAudio.current = true;
+              trackLocked = true;
           }
+        }
+
+        // Apply Final Variant Selection (Combines both lock constraints)
+        if (trackLocked) {
+           player.configure({ abr: { enabled: false } }); // Lock ABR
+
+           const activeTrack = tracks.find(t => t.active);
+           const fallbackHeight = sortedVideo.length > 0 ? sortedVideo[0].height : null;
+           const finalTargetHeight = targetVideoHeight || (activeTrack ? activeTrack.height : fallbackHeight);
+           
+           let targetVariant = tracks.find(t => t.audioBandwidth === targetAudioBandwidth && t.height === finalTargetHeight);
+           
+           if (!targetVariant) {
+               targetVariant = tracks.find(t => t.height === finalTargetHeight); 
+           }
+           if (!targetVariant) {
+               targetVariant = tracks.find(t => t.audioBandwidth === targetAudioBandwidth);
+           }
+           
+           if (targetVariant) {
+              player.selectVariantTrack(targetVariant, true, true);
+           }
         }
       });
 
@@ -562,6 +622,7 @@ export default function PerfectPlayerUI() {
           const currentCh = activeChannelRef.current;
           if (!currentCh || !currentCh.url) return;
           let uri = request.uris[0];
+          
           if (currentCh.url.includes('__hdnea__=')) {
               const tokenMatch = currentCh.url.match(/(__hdnea__=[^&]+)/);
               if (tokenMatch && !uri.includes('__hdnea__=')) {
@@ -583,7 +644,7 @@ export default function PerfectPlayerUI() {
     return () => { if (playerRef.current) playerRef.current.destroy(); };
   }, [isMounted, isOffline]);
 
-  // 4. INSTANT PLAYBACK ENGINE
+  // 4. INSTANT PLAYBACK ENGINE & AGGRESSIVE ADAPTIVE BANDWIDTH
   useEffect(() => {
     if (!playerRef.current) return;
     if (!activeChannel) {
@@ -593,6 +654,7 @@ export default function PerfectPlayerUI() {
       setIsLiveStream(false);
       isUserManualAudio.current = false; 
       isUserManualVideo.current = false;
+      initialVideoLocked.current = false;
       return;
     }
     const loadStream = async () => {
@@ -601,24 +663,61 @@ export default function PerfectPlayerUI() {
         setIsBuffering(true);
         isUserManualVideo.current = false; 
         isUserManualAudio.current = false;
+        initialVideoLocked.current = false;
         setQuality('Auto');
         
         let drmConfig = { clearKeys: {} };
         if (activeChannel.keyId && activeChannel.key && activeChannel.keyId !== "null" && activeChannel.key !== "null") {
           drmConfig.clearKeys[activeChannel.keyId] = activeChannel.key;
         }
+
+        const isVercelProxy = activeChannel.category === 'SonyLiv' && activeChannel.isNativeSonyLiv;
+        const preloadLatency = isVercelProxy ? 6 : 4; // Ensures latency specifications
         
-        // Prioritize highest bandwidth globally upfront
+        // UPGRADED SMOOTH PLAYBACK & SUPERFAST START CONFIGURATION
         playerRef.current.configure({
           drm: drmConfig,
           manifest: { dash: { ignoreDrmInfo: false } },
-          streaming: { bufferingGoal: 5 },
-          abr: { defaultBandwidthEstimate: 10000000, enabled: true }
+          streaming: { 
+             bufferingGoal: preloadLatency, // Keeps requested latency margin
+             rebufferingGoal: 0.2, // Instantly superfast start like channel changing (Eliminates 3-8s delay)
+             bufferBehind: 10,
+             safeMarginSwitchOffset: 1 // Smooth downgrade transitions
+          },
+          abr: { 
+             enabled: true, 
+             defaultBandwidthEstimate: 800000, // Pre-requests a 360/480p chunk to avoid initial high-res network freeze
+             switchInterval: 1, // Rapid re-evaluation to detect buffering early
+             bandwidthDowngradeTarget: 0.95, // Aggressively drop resolution if network struggles
+             bandwidthUpgradeTarget: 0.70 // Carefully upgrade to avoid re-buffering
+          }
         });
 
         let finalUrl = activeChannel.url;
         let forceMimeType = undefined;
-        if (finalUrl.includes('/live_') && finalUrl.includes('/chunks.m3u8')) {
+
+        if (activeChannel.category === 'SonyLiv' && activeChannel.isNativeSonyLiv) {
+            const activeProxyBase = SONY_PROXIES[sonyProxyIndexRef.current];
+            const response = await fetch(finalUrl);
+            if (!response.ok) throw new Error("Failed to fetch proxy master");
+            const originalText = await response.text();
+            
+            const rewrittenText = originalText.replace(/https:\/\/royal-firefly[^\s"']*\?url=([^\s"']+)/g, (match, urlParam) => {
+                return activeProxyBase + urlParam;
+            });
+
+            const blob = new Blob([rewrittenText], { type: 'application/x-mpegURL' });
+            finalUrl = URL.createObjectURL(blob);
+            forceMimeType = 'application/x-mpegURL';
+        } 
+        else if (finalUrl === 'hum_tv_master_custom_generation') {
+           const masterStr = buildHumTvMasterPlaylist();
+           const blob = new Blob([masterStr], { type: 'application/x-mpegURL' });
+           finalUrl = URL.createObjectURL(blob);
+           forceMimeType = 'application/x-mpegURL';
+        } else if (finalUrl === 'ary_digital_dynamic_generation') {
+           finalUrl = getAryDigitalUrl();
+        } else if (finalUrl.includes('/live_') && finalUrl.includes('/chunks.m3u8')) {
            const masterStr = buildMasterPlaylist(finalUrl);
            const blob = new Blob([masterStr], { type: 'application/x-mpegURL' });
            finalUrl = URL.createObjectURL(blob);
@@ -816,17 +915,36 @@ export default function PerfectPlayerUI() {
     if (!playerRef.current) return;
     if (item.index === -1) {
       isUserManualVideo.current = false;
+      isUserManualAudio.current = false; // Restore complete auto functionality naturally 
       playerRef.current.configure({ abr: { enabled: true } });
       setQuality('Auto');
+      
+      const active = playerRef.current.getVariantTracks().find(t => t.active);
+      if (active && active.audioBandwidth) setSelectedAudio(active.audioBandwidth);
     } else {
       isUserManualVideo.current = true;
       playerRef.current.configure({ abr: { enabled: false } });
-      playerRef.current.selectVariantTrack(item.track, true, false);
+      
+      const tracks = playerRef.current.getVariantTracks();
+      const sameHeightTracks = tracks.filter(t => t.height === item.track.height);
+      
+      let bestVariant;
+      if (isUserManualAudio.current && selectedAudio) {
+         bestVariant = sameHeightTracks.find(t => t.audioBandwidth === selectedAudio);
+      }
+      if (!bestVariant) {
+         const highestAudio = Math.max(...sameHeightTracks.map(t => t.audioBandwidth || 0));
+         bestVariant = sameHeightTracks.find(t => t.audioBandwidth === highestAudio);
+      }
+      if (!bestVariant) bestVariant = item.track;
+      
+      playerRef.current.selectVariantTrack(bestVariant, true, false);
       setQuality(item.name);
     }
     setShowPlayerSettings(false);
   };
 
+  // OLD LOGIC RESTORED STRICTLY FOR AUDIO CHANGE HANDLER
   const handleAudioManualChange = (e) => {
     const targetBw = Number(e.target.value);
     setSelectedAudio(targetBw);
@@ -861,7 +979,6 @@ export default function PerfectPlayerUI() {
     setActiveChannel(channel);
     setSearchQuery('');
     
-    // Manage History: Keep up to 4 items, store only {id, name}
     setLastPlayedHistory(prev => {
       const filtered = prev.filter(c => c.name !== channel.name && c.id !== channel.id);
       const updated = [{ id: channel.id, name: channel.name }, ...filtered].slice(0, 4);
@@ -891,9 +1008,17 @@ export default function PerfectPlayerUI() {
     return channels.filter(c => {
       if (!c.name?.toLowerCase().includes(searchQuery.toLowerCase())) return false;
       const cCat = c.category || c.group || c.group_title || 'Others';
-      if (activeCategory === 'All') return true;
-      if (activeCategory === 'Favorites') return favorites.includes(c.name);
+      
+      if (activeCategory === 'All') {
+         if (c.isCopiedToSonyLiv) return false;
+         return true;
+      }
+      if (activeCategory === 'Favorites') {
+         if (c.isCopiedToSonyLiv) return false;
+         return favorites.includes(c.name);
+      }
       if (activeCategory === 'Sports') return cCat === 'Sports' || (cCat === 'Premium' && /sport/i.test(c.name));
+      
       return cCat === activeCategory;
     });
   }, [channels, activeCategory, searchQuery, favorites]);
@@ -907,7 +1032,6 @@ export default function PerfectPlayerUI() {
     });
   }, [channels, activeChannel]);
 
-  // Construct history objects dynamically from fresh fetched data
   const historyChannelsToRender = useMemo(() => {
     return lastPlayedHistory
       .map(hist => channels.find(c => (c.id && c.id === hist.id) || (c.name && c.name === hist.name)))
@@ -958,7 +1082,6 @@ export default function PerfectPlayerUI() {
         .dly-1 { animation-delay: 0.1s; }
         .dly-2 { animation-delay: 0.2s; }
         
-        /* Premium Bottom Sheet / Modal Animations */
         @keyframes popUpModalMobile { from { transform: translateY(100%); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
         @keyframes popUpModalDesktop { from { transform: scale(0.95); opacity: 0; } to { transform: scale(1); opacity: 1; } }
         .yt-modal-mobile { animation: popUpModalMobile 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
@@ -996,6 +1119,7 @@ export default function PerfectPlayerUI() {
                   activeCategory === cat ? 'bg-[#0084ff] text-white shadow-md' 
                   : cat === 'Favorites' ? 'bg-pink-500/10 text-pink-400 hover:bg-pink-500/20 border border-pink-500/20'
                   : cat === 'Premium' ? 'bg-amber-500/10 text-amber-400 hover:bg-amber-500/20 border border-amber-500/20' 
+                  : cat === 'SonyLiv' ? 'bg-red-500/10 text-red-400 hover:bg-red-500/20 border border-red-500/20'
                   : cat === 'Zee5' ? 'bg-purple-500/10 text-purple-400 hover:bg-purple-500/20 border border-purple-500/20'
                   : 'bg-blue-900/20 text-blue-200/70 hover:bg-blue-900/40'
                 }`}
@@ -1116,7 +1240,7 @@ export default function PerfectPlayerUI() {
                 <div className="w-12 h-12 md:w-16 md:h-16 border-[3px] border-[#0084ff]/30 border-t-[#0084ff] rounded-full animate-spin"></div>
               </div>
 
-              {/* PERFECTLY CENTERED PLAY/PAUSE/SKIP - Adjusted to sit gracefully above timeline */}
+              {/* PERFECTLY CENTERED PLAY/PAUSE/SKIP */}
               <div className={`absolute top-0 left-0 w-full h-[calc(100%-20px)] flex items-center justify-center gap-14 sm:gap-20 md:gap-24 z-40 pointer-events-none transition-opacity duration-300 ${showControls ? 'opacity-100' : 'opacity-0'}`}>
                 <button onClick={(e) => handleButtonSkip(true, e)} className={`outline-none transition-transform hover:scale-105 active:scale-90 flex items-center rounded-full focus-visible:ring-4 focus-visible:ring-white/50 drop-shadow-[0_2px_15px_rgba(0,0,0,0.8)] ${pointerEventsClass}`}>
                   <svg className="w-10 h-10 sm:w-12 sm:h-12 text-white hover:text-[#0084ff] transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M11 19l-7-7 7-7m8 14l-7-7 7-7" /></svg>
@@ -1137,7 +1261,7 @@ export default function PerfectPlayerUI() {
                 </button>
               </div>
 
-              {/* YOUTUBE-STYLE SETTINGS MODAL - Fixed to viewport (Z-[100]) so it never hides in portrait */}
+              {/* YOUTUBE-STYLE SETTINGS MODAL */}
               {showPlayerSettings && (
                 <div 
                   className="fixed inset-0 z-[100] flex items-end md:items-center justify-center bg-black/60 pointer-events-auto transition-opacity"
@@ -1182,7 +1306,7 @@ export default function PerfectPlayerUI() {
               <div className={`absolute inset-0 flex flex-col justify-between p-4 md:p-6 z-30 transition-opacity duration-300 pointer-events-none ${showControls ? 'opacity-100 bg-black/50' : 'opacity-0'}`}
                    style={{ paddingTop: 'env(safe-area-inset-top, 16px)', paddingBottom: 'env(safe-area-inset-bottom, 16px)', paddingLeft: 'env(safe-area-inset-left, 16px)', paddingRight: 'env(safe-area-inset-right, 16px)' }}>
                 
-                {/* Top Bar - Adjusted to pull away from the very edges */}
+                {/* Top Bar */}
                 <div className={`flex items-center justify-between ${pointerEventsClass} w-full pt-4 pl-4`}>
                   <div className="flex items-center gap-3">
                     <button onClick={handleUiBack} className="p-1 hover:text-[#0084ff] transition active:scale-95 drop-shadow-md rounded-full outline-none focus-visible:ring-2 focus-visible:ring-white">
@@ -1273,6 +1397,7 @@ export default function PerfectPlayerUI() {
                   <span className="w-2 h-2 rounded-full bg-pink-500 animate-pulse"></span> More in {activeChannel.category || 'Category'}
                 </h3>
                 
+                {/* OLD LOGIC STRICT AUDIO DROPDOWN RESTORED */}
                 {audioTracks.length > 1 && (
                   <select
                     className="bg-white/5 border border-[#0084ff]/30 text-[10px] md:text-xs text-white rounded-md px-2 py-1 outline-none font-bold shadow-sm cursor-pointer hover:bg-white/10 transition-colors focus-visible:ring-2 focus-visible:ring-[#0084ff]"
